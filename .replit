@@ -1,0 +1,17 @@
+run = "mvn spring-boot:run"
+entrypoint = "src/main/java/com/codesync/eureka/EurekaServerApplication.java"
+
+[nix]
+channel = "stable-23_11"
+
+[env]
+JAVA_HOME = "/nix/store/jdk21"
+PORT = "8761"
+
+[deployment]
+run = ["sh", "-c", "mvn clean package -DskipTests && java -jar target/*.jar"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8761
+externalPort = 80
