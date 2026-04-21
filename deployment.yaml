@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app: api-gateway
+    project: codesync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        project: codesync
+    spec:
+      containers:
+        - name: api-gateway
+          # After you push to OpenShift's internal registry, this becomes:
+          # image-registry.openshift-image-registry.svc:5000/YOUR_NAMESPACE/api-gateway:latest
+          # For now use the placeholder — the oc new-build command sets this automatically
+          image: api-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+
+          env:
+            # JWT secret — pulled from Secret
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secrets
+                  key: JWT_SECRET
+
+            # Eureka password — pulled from Secret
+            - name: EUREKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secrets
+                  key: EUREKA_PASSWORD
+
+            # Build the full Eureka URL combining ConfigMap host + Secret password
+            - name: EUREKA_DEFAULT_ZONE
+              value: "https://admin:$(EUREKA_PASSWORD)@$(EUREKA_HOST)/eureka/"
+
+            # Eureka host — pulled from ConfigMap
+            - name: EUREKA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: EUREKA_HOST
+
+            # Tell Spring Boot to load config from the mounted ConfigMap file
+            - name: SPRING_CONFIG_LOCATION
+              value: "classpath:/,file:/config/application.properties"
+
+          # Mount the ConfigMap as a file at /config/application.properties
+          volumeMounts:
+            - name: app-config
+              mountPath: /config
+              readOnly: true
+
+          # Health checks — OpenShift uses these to manage pod lifecycle
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              # Developer Sandbox quota: 1 CPU / 1.5 GB RAM total per project
+              memory: "512Mi"
+              cpu: "500m"
+
+      volumes:
+        - name: app-config
+          configMap:
+            name: api-gateway-config
+            items:
+              - key: application.properties
+                path: application.properties
