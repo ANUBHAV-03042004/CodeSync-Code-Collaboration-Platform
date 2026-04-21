@@ -19,7 +19,7 @@ WORKDIR /deployments
 
 # OpenShift runs containers as a random non-root UID in group 0.
 # Give group 0 write access so the app can create temp files.
-RUN chmod -R g+rwX /deployments
+
 
 COPY --from=build /app/target/*.jar app.jar
 
