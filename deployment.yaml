@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eureka-service
+  labels:
+    app: eureka-service
+    project: codesync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eureka-service
+  template:
+    metadata:
+      labels:
+        app: eureka-service
+        project: codesync
+    spec:
+      containers:
+        - name: eureka-service
+          image: image-registry.openshift-image-registry.svc:5000/mr-aksthegreat030420-dev/eureka-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8761
+              name: http
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: EUREKA_USERNAME
+              value: "admin"
+            - name: EUREKA_PASSWORD
+              value: "admin"
+            - name: EUREKA_HOSTNAME
+              value: "eureka-service-mr-aksthegreat030420-dev.apps.rm1.0a51.p1.openshiftapps.com"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8761
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8761
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eureka-service
+  labels:
+    app: eureka-service
+    project: codesync
+spec:
+  selector:
+    app: eureka-service
+  ports:
+    - name: http
+      port: 8761
+      targetPort: 8761
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: eureka-service
+  labels:
+    app: eureka-service
+    project: codesync
+spec:
+  to:
+    kind: Service
+    name: eureka-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
