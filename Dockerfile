@@ -14,9 +14,8 @@ RUN mvn clean package -DskipTests -q
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# Non-root user for security
-RUN addgroup -S spring && adduser -S spring -G spring
-USER spring:spring
+# OpenShift runs as a random UID — give group write access so any UID works
+RUN chmod -R g+rwX /app
 
 COPY --from=build /app/target/*.jar eureka-server.jar
 
