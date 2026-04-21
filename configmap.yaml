@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: api-gateway-config
   labels:
-    app: api-gateway
+    app: api-gateway-service
     project: codesync
 data:
   # ── Replace EUREKA_HOST with your actual Replit Eureka URL ───────────────
