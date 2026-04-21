@@ -1,0 +1,80 @@
+version: '3.9'
+
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: codesync-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - codesync-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: codesync-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - codesync-net
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: codesync-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Management UI at http://localhost:15672 (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - codesync-net
+
+  eureka-server:
+    image: codesync/eureka-server:latest
+    container_name: codesync-eureka
+    ports:
+      - "8761:8761"
+    networks:
+      - codesync-net
+
+  # ── auth-service ──────────────────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: codesync-auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/codesync_auth
+      DB_USERNAME:                postgres
+      DB_PASSWORD:                postgres
+      EUREKA_URI:                 http://eureka-server:8761/eureka
+      JWT_SECRET:                 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      GITHUB_CLIENT_ID:           ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET:       ${GITHUB_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID:           ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET:       ${GOOGLE_CLIENT_SECRET}
+    depends_on:
+      - postgres
+      - eureka-server
+    networks:
+      - codesync-net
+    restart: on-failure
+
+volumes:
+  postgres_data:
+
+networks:
+  codesync-net:
+    driver: bridge

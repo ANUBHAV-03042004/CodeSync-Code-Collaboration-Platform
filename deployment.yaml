@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  labels:
+    app: auth-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: image-registry.openshift-image-registry.svc:5000/mr-aksthegreat030420-dev/auth-service:latest
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - secretRef:
+                name: auth-service-secrets
+          env:
+            - name: EUREKA_URI
+              value: "http://admin:$(EUREKA_PASSWORD)@eureka-service:8761/eureka"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 3
