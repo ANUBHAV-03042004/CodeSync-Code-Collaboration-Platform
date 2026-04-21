@@ -22,9 +22,6 @@ spec:
           envFrom:
             - secretRef:
                 name: auth-service-secrets
-          env:
-            - name: EUREKA_URI
-              value: "http://admin:$(EUREKA_PASSWORD)@eureka-service:8761/eureka"
           resources:
             requests:
               memory: "256Mi"
