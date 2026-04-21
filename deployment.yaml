@@ -18,52 +18,43 @@ spec:
     spec:
       containers:
         - name: api-gateway-service
-          # After you push to OpenShift's internal registry, this becomes:
-          # image-registry.openshift-image-registry.svc:5000/YOUR_NAMESPACE/api-gateway:latest
-          # For now use the placeholder — the oc new-build command sets this automatically
           image: image-registry.openshift-image-registry.svc:5000/mr-aksthegreat030420-dev/api-gateway-service:latest
-
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http
               protocol: TCP
 
-			  env:
-			    - name: JWT_SECRET
-			      valueFrom:
-			        secretKeyRef:
-			          name: api-gateway-secrets
-			          key: JWT_SECRET
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secrets
+                  key: JWT_SECRET
 
-			    - name: EUREKA_PASSWORD
-			      valueFrom:
-			        secretKeyRef:
-			          name: api-gateway-secrets
-			          key: EUREKA_PASSWORD
+            - name: EUREKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secrets
+                  key: EUREKA_PASSWORD
 
-			    #
-			    - name: EUREKA_HOST
-			      valueFrom:
-			        configMapKeyRef:
-			          name: api-gateway-config
-			          key: EUREKA_HOST
+            - name: EUREKA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: EUREKA_HOST
 
-			    # 
-			    - name: EUREKA_DEFAULT_ZONE
-			      value: "https://admin:$(EUREKA_PASSWORD)@$(EUREKA_HOST)/eureka/"
+            - name: EUREKA_DEFAULT_ZONE
+              value: "https://admin:$(EUREKA_PASSWORD)@$(EUREKA_HOST)/eureka/"
 
-			    - name: SPRING_CONFIG_LOCATION
-			      value: "classpath:/,file:/config/application.properties"
-         
+            - name: SPRING_CONFIG_LOCATION
+              value: "classpath:/,file:/config/application.properties"
 
-          # Mount the ConfigMap as a file at /config/application.properties
           volumeMounts:
             - name: app-config
               mountPath: /config
               readOnly: true
 
-          # Health checks — OpenShift uses these to manage pod lifecycle
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
@@ -85,7 +76,6 @@ spec:
               memory: "256Mi"
               cpu: "100m"
             limits:
-              # Developer Sandbox quota: 1 CPU / 1.5 GB RAM total per project
               memory: "512Mi"
               cpu: "500m"
 
