@@ -25,28 +25,16 @@ spec:
               name: http
               protocol: TCP
           env:
-            # JWT secret — stored in OpenShift Secret "api-gateway-secrets"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: api-gateway-secrets
                   key: JWT_SECRET
-            # Eureka URL is baked into application.properties (http://eureka-service:8761/eureka/)
-            # No EUREKA env vars needed here
-          livenessProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 15
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /actuator/health/readiness
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 3
+            - name: EUREKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secrets
+                  key: EUREKA_PASSWORD
           resources:
             requests:
               memory: "256Mi"
@@ -54,3 +42,17 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
