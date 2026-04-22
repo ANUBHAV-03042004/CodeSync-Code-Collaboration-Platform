@@ -42,33 +42,22 @@ public class AuthResource {
     // ── Register ──────────────────────────────────────────────────────────────
 
     @Operation(summary = "Register a new user",
-               description = "Creates a new LOCAL provider account. Auto-logs in and returns JWT access token + refresh token.")
+               description = "Creates a new LOCAL provider account. Returns the created user profile only. "
+                           + "Call POST /api/v1/auth/login with your credentials to receive a JWT token.")
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "User registered and logged in — tokens returned"),
+        @ApiResponse(responseCode = "201", description = "User registered successfully — call /login to get tokens"),
         @ApiResponse(responseCode = "400", description = "Validation error or email/username already taken",
                      content = @Content(schema = @Schema(implementation = Map.class)))
     })
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody @Valid RegisterBody body) {
-        // 1. Create the account
+        // Only create the account — NO token generation here.
+        // The client must explicitly call POST /api/v1/auth/login to obtain tokens.
         User user = authService.register(body.username, body.email, body.password, body.fullName);
 
-        // 2. Auto-login: issue tokens immediately so the client needs no second round-trip
-        org.springframework.security.core.userdetails.UserDetails ud =
-            org.springframework.security.core.userdetails.User
-                .withUsername(user.getEmail())
-                .password("")
-                .roles(user.getRole().name())
-                .build();
-
-        String accessToken  = jwtTokenProvider.generateAccessToken(ud, user.getUserId(), user.getRole().name());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(ud);
-
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                "accessToken",  accessToken,
-                "refreshToken", refreshToken,
-                "tokenType",    "Bearer",
-                "user",         toDto(user)
+                "message", "Registration successful. Please login to obtain your access token.",
+                "user",    toDto(user)
         ));
     }
 
