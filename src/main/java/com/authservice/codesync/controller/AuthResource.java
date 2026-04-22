@@ -224,13 +224,13 @@ public class AuthResource {
 
     // ── Request body records ──────────────────────────────────────────────────
 
-    record RegisterBody(
+    public record RegisterBody(
             @NotBlank @Size(min = 3, max = 30) String username,
             @NotBlank @Email String email,
             @NotBlank @Size(min = 8) String password,
             String fullName) {}
 
-    record LoginBody(@NotBlank String email, @NotBlank String password) {}
+    public record LoginBody(@NotBlank String email, @NotBlank String password) {}
 
     record UpdateProfileBody(String username, String fullName, String bio, String avatarUrl) {}
 
