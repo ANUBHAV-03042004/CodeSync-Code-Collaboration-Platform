@@ -9,25 +9,21 @@ public interface AuthService {
 
     // ── Authentication ─────────────────────────────────────────────────────
 
-    /**
-     * Register a new local (email/password) user.
-     * @return the saved User entity
-     */
     User register(String username, String email, String rawPassword, String fullName);
 
-    /**
-     * Authenticate with email + password; returns a signed JWT access token.
-     */
     String login(String email, String rawPassword);
 
     /**
-     * Validate a JWT token string.
+     * Blacklist the access token and clear the inactivity window.
+     * Must be called on explicit user logout.
+     *
+     * @param token  the raw Bearer JWT string
+     * @param userId the authenticated user's ID
      */
+    void logout(String token, Long userId);
+
     boolean validateToken(String token);
 
-    /**
-     * Issue a new access token from a valid refresh token.
-     */
     String refreshToken(String refreshToken);
 
     // ── Profile management ────────────────────────────────────────────────
@@ -36,7 +32,8 @@ public interface AuthService {
 
     Optional<User> getUserById(Long userId);
 
-    User updateProfile(Long userId, String username, String fullName, String bio, String avatarUrl);
+    User updateProfile(Long userId, String username, String fullName,
+                       String bio, String avatarUrl);
 
     void changePassword(Long userId, String currentPassword, String newPassword);
 

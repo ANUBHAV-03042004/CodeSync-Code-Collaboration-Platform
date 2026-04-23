@@ -3,14 +3,13 @@ package com.authservice.codesync.controller;
 import com.authservice.codesync.entity.User;
 import com.authservice.codesync.security.JwtTokenProvider;
 import com.authservice.codesync.service.AuthService;
+import com.authservice.codesync.service.TokenBlacklistService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -20,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,33 +28,32 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/auth")
-@Tag(name = "Authentication", description = "Registration, login, token operations, profile management and admin endpoints")
+@Tag(name = "Authentication", description = "Registration, login, logout, token ops, profile and admin endpoints")
 public class AuthResource {
 
-    private final AuthService      authService;
-    private final JwtTokenProvider jwtTokenProvider;
+    private final AuthService           authService;
+    private final JwtTokenProvider      jwtTokenProvider;
+    private final TokenBlacklistService blacklistService;
 
-    public AuthResource(AuthService authService, JwtTokenProvider jwtTokenProvider) {
+    public AuthResource(AuthService authService,
+                        JwtTokenProvider jwtTokenProvider,
+                        TokenBlacklistService blacklistService) {
         this.authService      = authService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.blacklistService = blacklistService;
     }
 
     // ── Register ──────────────────────────────────────────────────────────────
 
     @Operation(summary = "Register a new user",
-               description = "Creates a new LOCAL provider account. Returns the created user profile only. "
-                           + "Call POST /api/v1/auth/login with your credentials to receive a JWT token.")
+               description = "Creates a LOCAL account. Returns user data only — call POST /login to receive tokens.")
     @ApiResponses({
-        @ApiResponse(responseCode = "201", description = "User registered successfully — call /login to get tokens"),
-        @ApiResponse(responseCode = "400", description = "Validation error or email/username already taken",
-                     content = @Content(schema = @Schema(implementation = Map.class)))
+        @ApiResponse(responseCode = "201", description = "User registered — call /login to get tokens"),
+        @ApiResponse(responseCode = "400", description = "Validation error or email/username already taken")
     })
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody @Valid RegisterBody body) {
-        // Only create the account — NO token generation here.
-        // The client must explicitly call POST /api/v1/auth/login to obtain tokens.
         User user = authService.register(body.username, body.email, body.password, body.fullName);
-
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "message", "Registration successful. Please login to obtain your access token.",
                 "user",    toDto(user)
@@ -64,9 +63,10 @@ public class AuthResource {
     // ── Login ─────────────────────────────────────────────────────────────────
 
     @Operation(summary = "Login with email and password",
-               description = "Authenticates a user and returns a JWT access token + refresh token.")
+               description = "Authenticates user and returns JWT access + refresh tokens. "
+                           + "Inactivity window starts from this point.")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Login successful, tokens returned"),
+        @ApiResponse(responseCode = "200", description = "Login successful — tokens returned"),
         @ApiResponse(responseCode = "401", description = "Invalid credentials")
     })
     @PostMapping("/login")
@@ -86,10 +86,33 @@ public class AuthResource {
         ));
     }
 
+    // ── Logout ────────────────────────────────────────────────────────────────
+
+    @Operation(summary = "Logout — invalidate access token immediately",
+               security = @SecurityRequirement(name = "bearerAuth"),
+               description = "Blacklists the current access token in Redis so it cannot be reused even if "
+                           + "the client still holds it. Also clears the inactivity tracking window.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Logged out successfully"),
+        @ApiResponse(responseCode = "401", description = "No valid token provided")
+    })
+    @PostMapping("/logout")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> logout(HttpServletRequest request,
+                                     @AuthenticationPrincipal UserDetails principal) {
+        String token = extractToken(request);
+        if (token != null && principal != null) {
+            User user = authService.getUserByEmail(principal.getUsername()).orElseThrow();
+            authService.logout(token, user.getUserId());
+        }
+        return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
     // ── Refresh ───────────────────────────────────────────────────────────────
 
     @Operation(summary = "Refresh access token",
-               description = "Exchange a valid refresh token for a new access token.")
+               description = "Exchange a valid refresh token for a new access token. "
+                           + "Also slides the inactivity window forward.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "New access token issued"),
         @ApiResponse(responseCode = "400", description = "Invalid or expired refresh token")
@@ -102,22 +125,33 @@ public class AuthResource {
 
     // ── Validate ──────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Validate a JWT token",
-               description = "Used by other microservices / API gateway to verify token validity.")
-    @ApiResponse(responseCode = "200", description = "Returns {valid: true/false}")
+    @Operation(summary = "Validate a JWT token — checks signature, expiry AND blacklist")
     @PostMapping("/validate")
     public ResponseEntity<?> validate(@RequestBody Map<String, String> body) {
         boolean valid = authService.validateToken(body.get("token"));
         return ResponseEntity.ok(Map.of("valid", valid));
     }
 
+    // ── Session status (inactivity remaining) ─────────────────────────────────
+
+    @Operation(summary = "Session status — returns remaining inactivity time in ms",
+               security = @SecurityRequirement(name = "bearerAuth"),
+               description = "Useful for the Angular frontend to show a 'session about to expire' warning "
+                           + "before the server-side inactivity TTL fires.")
+    @GetMapping("/session/status")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> sessionStatus(@AuthenticationPrincipal UserDetails principal) {
+        User user = authService.getUserByEmail(principal.getUsername()).orElseThrow();
+        long remainingMs = blacklistService.getRemainingActivityMs(user.getUserId());
+        return ResponseEntity.ok(Map.of(
+                "active",         remainingMs > 0,
+                "remainingMs",    remainingMs,
+                "remainingMins",  remainingMs / 60000
+        ));
+    }
+
     // ── Profile ───────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Get current user profile", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Profile returned"),
-        @ApiResponse(responseCode = "401", description = "Unauthorised")
-    })
     @GetMapping("/profile")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getProfile(@AuthenticationPrincipal UserDetails principal) {
@@ -125,13 +159,11 @@ public class AuthResource {
         return ResponseEntity.ok(toDto(user));
     }
 
-    @Operation(summary = "Update current user profile", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponse(responseCode = "200", description = "Profile updated")
     @PutMapping("/profile")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> updateProfile(@AuthenticationPrincipal UserDetails principal,
                                            @RequestBody UpdateProfileBody body) {
-        User user = authService.getUserByEmail(principal.getUsername()).orElseThrow();
+        User user    = authService.getUserByEmail(principal.getUsername()).orElseThrow();
         User updated = authService.updateProfile(
                 user.getUserId(), body.username, body.fullName, body.bio, body.avatarUrl);
         return ResponseEntity.ok(toDto(updated));
@@ -139,12 +171,6 @@ public class AuthResource {
 
     // ── Password ──────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Change password", security = @SecurityRequirement(name = "bearerAuth"),
-               description = "Only available for LOCAL accounts (not OAuth2 users).")
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Password changed"),
-        @ApiResponse(responseCode = "400", description = "Current password incorrect or OAuth account")
-    })
     @PutMapping("/password")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> changePassword(@AuthenticationPrincipal UserDetails principal,
@@ -154,24 +180,15 @@ public class AuthResource {
         return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
     }
 
-    // ── Search & lookup ───────────────────────────────────────────────────────
+    // ── Search ────────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Search users by username prefix")
-    @ApiResponse(responseCode = "200", description = "Matching users returned")
     @GetMapping("/search")
-    public ResponseEntity<?> searchUsers(
-            @Parameter(description = "Search query (username prefix)", example = "alice")
-            @RequestParam("q") String query) {
+    public ResponseEntity<?> searchUsers(@RequestParam("q") String query) {
         List<?> results = authService.searchUsers(query)
                 .stream().map(this::toDto).collect(Collectors.toList());
         return ResponseEntity.ok(results);
     }
 
-    @Operation(summary = "Get user by ID")
-    @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "User found"),
-        @ApiResponse(responseCode = "404", description = "User not found")
-    })
     @GetMapping("/{userId}")
     public ResponseEntity<?> getUserById(@PathVariable Long userId) {
         return authService.getUserById(userId)
@@ -181,8 +198,6 @@ public class AuthResource {
 
     // ── Account lifecycle ─────────────────────────────────────────────────────
 
-    @Operation(summary = "Deactivate own account", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponse(responseCode = "200", description = "Account deactivated")
     @PostMapping("/deactivate")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> deactivate(@AuthenticationPrincipal UserDetails principal) {
@@ -191,18 +206,14 @@ public class AuthResource {
         return ResponseEntity.ok(Map.of("message", "Account deactivated"));
     }
 
-    // ── Admin endpoints ───────────────────────────────────────────────────────
+    // ── Admin ─────────────────────────────────────────────────────────────────
 
-    @Operation(summary = "[ADMIN] List all users", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponse(responseCode = "200", description = "All users returned")
     @GetMapping("/admin/users")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getAllUsers() {
         return ResponseEntity.ok(authService.getAllUsers().stream().map(this::toDto).toList());
     }
 
-    @Operation(summary = "[ADMIN] Reactivate a user account", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponse(responseCode = "200", description = "Account reactivated")
     @PutMapping("/admin/users/{userId}/reactivate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> reactivate(@PathVariable Long userId) {
@@ -210,11 +221,6 @@ public class AuthResource {
         return ResponseEntity.ok(Map.of("message", "Account reactivated"));
     }
 
-    @Operation(summary = "[ADMIN] Permanently delete a user", security = @SecurityRequirement(name = "bearerAuth"))
-    @ApiResponses({
-        @ApiResponse(responseCode = "204", description = "User deleted"),
-        @ApiResponse(responseCode = "403", description = "Forbidden — admin role required")
-    })
     @DeleteMapping("/admin/users/{userId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> deleteUser(@PathVariable Long userId) {
@@ -238,7 +244,13 @@ public class AuthResource {
             @NotBlank String currentPassword,
             @NotBlank @Size(min = 8) String newPassword) {}
 
-    // ── Mapper ────────────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private String extractToken(HttpServletRequest request) {
+        String bearer = request.getHeader("Authorization");
+        return (StringUtils.hasText(bearer) && bearer.startsWith("Bearer "))
+                ? bearer.substring(7) : null;
+    }
 
     private Map<String, Object> toDto(User user) {
         return Map.of(

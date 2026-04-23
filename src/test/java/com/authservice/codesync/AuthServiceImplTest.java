@@ -6,6 +6,7 @@ import com.authservice.codesync.repository.UserRepository;
 import com.authservice.codesync.security.JwtTokenProvider;
 import com.authservice.codesync.service.AuthService;
 import com.authservice.codesync.service.AuthServiceImpl;
+import com.authservice.codesync.service.TokenBlacklistService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Map;
@@ -35,14 +37,25 @@ class AuthServiceImplTest {
     @Mock PasswordEncoder       passwordEncoder;
     @Mock JwtTokenProvider      jwtTokenProvider;
     @Mock AuthenticationManager authenticationManager;
+
+    // ROOT CAUSE FIX:
+    // AuthServiceImpl constructor requires TokenBlacklistService.
+    // @InjectMocks fills constructor args from @Mock fields in this class.
+    // Without this @Mock, Mockito had nothing to inject and silently passed
+    // null — causing NullPointerException on any call to blacklistService.*
+    @Mock TokenBlacklistService blacklistService;
+
     @InjectMocks AuthServiceImpl authService;
 
     // ── Controller-layer mocks ────────────────────────────────────────────────
-    @Mock AuthService      authServiceMock;
-    @Mock JwtTokenProvider jwtTokenProviderMock;
-    private AuthResource   authResource;
+    @Mock AuthService           authServiceMock;
+    @Mock JwtTokenProvider      jwtTokenProviderMock;
+    // FIX: was `null` in setUp() — must be a real @Mock so AuthResource
+    // constructor does not receive null for its blacklistService parameter
+    @Mock TokenBlacklistService blacklistServiceMock;
 
-    private User sampleUser;
+    private AuthResource authResource;
+    private User         sampleUser;
 
     @BeforeEach
     void setUp() {
@@ -56,7 +69,8 @@ class AuthServiceImplTest {
                 .isActive(true)
                 .build();
 
-        authResource = new AuthResource(authServiceMock, jwtTokenProviderMock);
+        // FIX: third arg is blacklistServiceMock instead of null
+        authResource = new AuthResource(authServiceMock, jwtTokenProviderMock, blacklistServiceMock);
     }
 
     // =========================================================================
@@ -79,7 +93,6 @@ class AuthServiceImplTest {
 
             assertThat(result.getUsername()).isEqualTo("alice");
             verify(userRepository).save(any(User.class));
-            // Service must NEVER generate tokens during registration
             verifyNoInteractions(jwtTokenProvider);
         }
 
@@ -133,8 +146,6 @@ class AuthServiceImplTest {
             assertThat(body2).isNotNull();
             assertThat(body2).containsKey("user");
             assertThat(body2).containsKey("message");
-
-            // These keys must be absent — tokens only come from /login
             assertThat(body2).doesNotContainKey("accessToken");
             assertThat(body2).doesNotContainKey("refreshToken");
             assertThat(body2).doesNotContainKey("tokenType");
@@ -199,7 +210,7 @@ class AuthServiceImplTest {
     }
 
     // =========================================================================
-    // AuthServiceImpl — other tests
+    // AuthServiceImpl — changePassword
     // =========================================================================
 
     @Nested
@@ -227,31 +238,56 @@ class AuthServiceImplTest {
         }
     }
 
+    // =========================================================================
+    // AuthServiceImpl — account lifecycle
+    // =========================================================================
+
     @Nested
     @DisplayName("AuthServiceImpl — account lifecycle")
     class AccountLifecycleTests {
 
         @Test
-        @DisplayName("deactivateAccount sets isActive to false")
+        @DisplayName("deactivateAccount sets isActive to false and clears Redis activity key")
         void deactivateAccount_setsActiveFalse() {
             when(userRepository.findByUserId(1L)).thenReturn(Optional.of(sampleUser));
             when(userRepository.save(any(User.class))).thenReturn(sampleUser);
 
+            // blacklistService is now a proper @Mock — clearActivity() is a
+            // no-op stub, so no NullPointerException is thrown here
             authService.deactivateAccount(1L);
 
             assertThat(sampleUser.isActive()).isFalse();
             verify(userRepository).save(sampleUser);
+            // Confirm inactivity key is cleared when account is deactivated
+            verify(blacklistService).clearActivity(1L);
         }
 
         @Test
         @DisplayName("getUserByEmail returns the correct user")
         void getUserByEmail_returnsUser() {
-            when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(sampleUser));
+            when(userRepository.findByEmail("alice@example.com"))
+                    .thenReturn(Optional.of(sampleUser));
 
             Optional<User> result = authService.getUserByEmail("alice@example.com");
 
             assertThat(result).isPresent();
             assertThat(result.get().getUsername()).isEqualTo("alice");
+        }
+
+        @Test
+        @DisplayName("login seeds the inactivity window via recordActivity")
+        void login_recordsActivity() {
+            when(userRepository.findByEmail("alice@example.com"))
+                    .thenReturn(Optional.of(sampleUser));
+            when(authenticationManager.authenticate(any()))
+                    .thenReturn(mock(Authentication.class));
+            when(jwtTokenProvider.generateAccessToken(any(), any(), any()))
+                    .thenReturn("access-token");
+
+            authService.login("alice@example.com", "password123");
+
+            // Login must seed the inactivity window in Redis immediately
+            verify(blacklistService).recordActivity(1L);
         }
     }
 }
