@@ -32,26 +32,23 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AuthServiceImplTest {
 
-    // ── Service-layer mocks ───────────────────────────────────────────────────
+    // ── Service-layer mocks (injected into AuthServiceImpl) ───────────────────
     @Mock UserRepository        userRepository;
     @Mock PasswordEncoder       passwordEncoder;
     @Mock JwtTokenProvider      jwtTokenProvider;
     @Mock AuthenticationManager authenticationManager;
-
-    // ROOT CAUSE FIX:
-    // AuthServiceImpl constructor requires TokenBlacklistService.
-    // @InjectMocks fills constructor args from @Mock fields in this class.
-    // Without this @Mock, Mockito had nothing to inject and silently passed
-    // null — causing NullPointerException on any call to blacklistService.*
     @Mock TokenBlacklistService blacklistService;
 
-    @InjectMocks AuthServiceImpl authService;
+    // AuthServiceImpl is wired manually in setUp() to guarantee the correct
+    // mocks are injected. Using @InjectMocks alongside duplicate same-type
+    // @Mock fields (jwtTokenProvider vs jwtTokenProviderMock, blacklistService
+    // vs blacklistServiceMock) causes Mockito to pick arbitrarily, so the
+    // stubs in tests end up on the wrong instance and are never triggered.
+    AuthServiceImpl authService;
 
-    // ── Controller-layer mocks ────────────────────────────────────────────────
+    // ── Controller-layer mocks (injected into AuthResource) ──────────────────
     @Mock AuthService           authServiceMock;
     @Mock JwtTokenProvider      jwtTokenProviderMock;
-    // FIX: was `null` in setUp() — must be a real @Mock so AuthResource
-    // constructor does not receive null for its blacklistService parameter
     @Mock TokenBlacklistService blacklistServiceMock;
 
     private AuthResource authResource;
@@ -59,6 +56,12 @@ class AuthServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // Explicit constructor wiring — eliminates ambiguity from having two
+        // @Mock fields of the same type (JwtTokenProvider, TokenBlacklistService)
+        authService = new AuthServiceImpl(
+                userRepository, passwordEncoder, jwtTokenProvider,
+                authenticationManager, blacklistService);
+
         sampleUser = User.builder()
                 .userId(1L)
                 .username("alice")
@@ -69,7 +72,6 @@ class AuthServiceImplTest {
                 .isActive(true)
                 .build();
 
-        // FIX: third arg is blacklistServiceMock instead of null
         authResource = new AuthResource(authServiceMock, jwtTokenProviderMock, blacklistServiceMock);
     }
 
@@ -252,8 +254,6 @@ class AuthServiceImplTest {
             when(userRepository.findByUserId(1L)).thenReturn(Optional.of(sampleUser));
             when(userRepository.save(any(User.class))).thenReturn(sampleUser);
 
-            // blacklistService is now a proper @Mock — clearActivity() is a
-            // no-op stub, so no NullPointerException is thrown here
             authService.deactivateAccount(1L);
 
             assertThat(sampleUser.isActive()).isFalse();
