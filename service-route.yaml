@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: collab-service
+  labels:
+    app: collab-service
+spec:
+  selector:
+    app: collab-service
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8084
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: collab-service
+  labels:
+    app: collab-service
+spec:
+  to:
+    kind: Service
+    name: collab-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
