@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  labels:
+    app: execution-service
+    project: codesync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: execution-service
+  template:
+    metadata:
+      labels:
+        app: execution-service
+        project: codesync
+    spec:
+      containers:
+        - name: execution-service
+          image: image-registry.openshift-image-registry.svc:5000/mr-aksthegreat030420-dev/execution-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8085
+              name: http
+          envFrom:
+            - secretRef:
+                name: execution-service-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8085
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8085
+            initialDelaySeconds: 70
+            periodSeconds: 15
+            failureThreshold: 3

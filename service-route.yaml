@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: execution-service
+  labels:
+    app: execution-service
+spec:
+  selector:
+    app: execution-service
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: execution-service
+  labels:
+    app: execution-service
+spec:
+  to:
+    kind: Service
+    name: execution-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
