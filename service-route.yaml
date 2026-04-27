@@ -1,0 +1,16 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: comment-service
+  labels:
+    app: comment-service
+    project: codesync
+spec:
+  to:
+    kind: Service
+    name: comment-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

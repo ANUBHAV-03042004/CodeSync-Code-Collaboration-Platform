@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: comment-service
+  labels:
+    app: comment-service
+    project: codesync
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: comment-service
+  template:
+    metadata:
+      labels:
+        app: comment-service
+        project: codesync
+    spec:
+      containers:
+        - name: comment-service
+          image: image-registry.openshift-image-registry.svc:5000/mr-aksthegreat030420-dev/comment-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8087
+              name: http
+              protocol: TCP
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: DB_URL
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: DB_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: JWT_SECRET
+            - name: EUREKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: EUREKA_PASSWORD
+            - name: SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: SERVER_URL
+            - name: RABBITMQ_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: RABBITMQ_HOST
+            - name: RABBITMQ_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: RABBITMQ_PORT
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: RABBITMQ_PASS
+            - name: RABBITMQ_VHOST
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: RABBITMQ_VHOST
+            - name: RABBITMQ_SSL
+              valueFrom:
+                secretKeyRef:
+                  name: comment-service-secrets
+                  key: RABBITMQ_SSL
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8087
+            initialDelaySeconds: 70
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8087
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 5
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: comment-service
+  labels:
+    app: comment-service
+    project: codesync
+spec:
+  selector:
+    app: comment-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8087
+      targetPort: 8087
+  type: ClusterIP
