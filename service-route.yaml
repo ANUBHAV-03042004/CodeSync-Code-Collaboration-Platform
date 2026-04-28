@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+    project: codesync
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - name: http
+      port: 8088
+      targetPort: 8088
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+    project: codesync
+spec:
+  to:
+    kind: Service
+    name: notification-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
