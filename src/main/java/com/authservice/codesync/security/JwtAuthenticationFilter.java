@@ -76,9 +76,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Long   userId   = jwtTokenProvider.extractUserId(token);
 
             // ── Gate 3: inactivity window check ──────────────────────────────
-            // Skip inactivity check if this is the very first request after login
-            // (Redis activity key not yet set). recordActivity() below seeds it.
-            if (userId != null && !blacklistService.isUserActive(userId)) {
+            // Only reject if the key EXISTS but has expired (i.e. user was active
+            // before but has now gone idle). A missing key means the user just logged
+            // in — we seed it below. We detect "was active, now idle" by checking
+            // whether the key existed at some point via a separate flag, but the
+            // simplest safe approach is: treat a missing key as "just logged in"
+            // and let it be seeded by recordActivity(). A missing key after a clear
+            // logout is prevented because logout calls clearActivity() AND blacklists
+            // the token — Gate 2 catches those tokens first.
+            if (userId != null && blacklistService.hasActivityKeyEverBeenSet(userId)
+                    && !blacklistService.isUserActive(userId)) {
                 log.info("User {} session expired due to inactivity", userId);
                 sendUnauthorized(response, "SESSION_INACTIVE",
                         "Session expired due to inactivity — please login again");
@@ -95,7 +102,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
 
-                // ── Slide the inactivity window forward ───────────────────────
+                // ── Seed / slide the inactivity window forward ────────────────
                 if (userId != null) {
                     blacklistService.recordActivity(userId);
                 }

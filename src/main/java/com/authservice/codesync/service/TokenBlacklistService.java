@@ -27,9 +27,10 @@ public class TokenBlacklistService {
 
     private static final Logger log = LoggerFactory.getLogger(TokenBlacklistService.class);
 
-    private static final String BLACKLIST_PREFIX = "blacklist:";
-    private static final String ACTIVITY_PREFIX  = "activity:";
-    private static final String BLACKLISTED_VALUE = "1";
+    private static final String BLACKLIST_PREFIX  = "blacklist:";
+    private static final String ACTIVITY_PREFIX   = "activity:";
+    private static final String SEEN_PREFIX        = "seen:";       // permanent marker set on first login
+    private static final String BLACKLISTED_VALUE  = "1";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -76,14 +77,28 @@ public class TokenBlacklistService {
     /**
      * Record activity for a user — call this on every authenticated request.
      * Slides the inactivity window forward by resetting the TTL.
+     * Also writes a permanent "seen" marker so the filter can distinguish
+     * "never logged in" from "logged in but now idle".
      */
     public void recordActivity(Long userId) {
+        // Sliding inactivity window (expires after inactivityTimeoutMs of silence)
         redisTemplate.opsForValue().set(
                 ACTIVITY_PREFIX + userId,
                 "active",
                 inactivityTimeoutMs,
                 TimeUnit.MILLISECONDS
         );
+        // Permanent marker — no TTL — so we know this user has logged in before
+        redisTemplate.opsForValue().setIfAbsent(SEEN_PREFIX + userId, "1");
+    }
+
+    /**
+     * Returns true if this user has ever successfully logged in (activity was
+     * recorded at least once). Used by the JWT filter to distinguish a fresh
+     * token (no activity key yet — just issued) from a truly idle session.
+     */
+    public boolean hasActivityKeyEverBeenSet(Long userId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(SEEN_PREFIX + userId));
     }
 
     /**
@@ -98,9 +113,11 @@ public class TokenBlacklistService {
     /**
      * Explicitly clear the activity key — call on logout so the inactivity
      * key does not linger until its TTL expires.
+     * The seen-marker is also cleared so a fresh login re-seeds it correctly.
      */
     public void clearActivity(Long userId) {
         redisTemplate.delete(ACTIVITY_PREFIX + userId);
+        redisTemplate.delete(SEEN_PREFIX + userId);
         log.debug("Activity cleared for user {}", userId);
     }
 

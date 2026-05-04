@@ -71,12 +71,13 @@ public class AuthResource {
     })
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody @Valid LoginBody body) {
+        // login() authenticates, generates the access token, and seeds the inactivity window
         String accessToken = authService.login(body.email, body.password);
 
         User user = authService.getUserByEmail(body.email).orElseThrow();
-        String refreshToken = jwtTokenProvider.generateRefreshToken(
-                org.springframework.security.core.userdetails.User
-                        .withUsername(user.getEmail()).password("").roles(user.getRole().name()).build());
+
+        // Generate ONE refresh token here — authService.login() does not return one
+        String refreshToken = authService.generateRefreshToken(user);
 
         return ResponseEntity.ok(Map.of(
                 "accessToken",  accessToken,
@@ -88,10 +89,9 @@ public class AuthResource {
 
     // ── Logout ────────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Logout — invalidate access token immediately",
+    @Operation(summary = "Logout — invalidate access AND refresh tokens immediately",
                security = @SecurityRequirement(name = "bearerAuth"),
-               description = "Blacklists the current access token in Redis so it cannot be reused even if "
-                           + "the client still holds it. Also clears the inactivity tracking window.")
+               description = "Blacklists both tokens in Redis. Pass refreshToken in the request body (optional but recommended).")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Logged out successfully"),
         @ApiResponse(responseCode = "401", description = "No valid token provided")
@@ -99,11 +99,13 @@ public class AuthResource {
     @PostMapping("/logout")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> logout(HttpServletRequest request,
-                                     @AuthenticationPrincipal UserDetails principal) {
-        String token = extractToken(request);
-        if (token != null && principal != null) {
+                                     @AuthenticationPrincipal UserDetails principal,
+                                     @RequestBody(required = false) Map<String, String> body) {
+        String accessToken  = extractToken(request);
+        String refreshToken = body != null ? body.get("refreshToken") : null;
+        if (accessToken != null && principal != null) {
             User user = authService.getUserByEmail(principal.getUsername()).orElseThrow();
-            authService.logout(token, user.getUserId());
+            authService.logout(accessToken, refreshToken, user.getUserId());
         }
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
     }

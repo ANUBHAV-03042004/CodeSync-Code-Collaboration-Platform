@@ -34,3 +34,5 @@ build/
 .gitattributes
 mvnw
 mvnw.cmd
+openshift-update-secret.sh
+openshift-rebuild-deploy.sh

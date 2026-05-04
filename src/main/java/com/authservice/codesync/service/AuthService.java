@@ -13,14 +13,17 @@ public interface AuthService {
 
     String login(String email, String rawPassword);
 
+    String generateRefreshToken(User user);
+
     /**
-     * Blacklist the access token and clear the inactivity window.
+     * Blacklist both the access token and the refresh token, and clear the inactivity window.
      * Must be called on explicit user logout.
      *
-     * @param token  the raw Bearer JWT string
-     * @param userId the authenticated user's ID
+     * @param accessToken  the raw Bearer JWT string
+     * @param refreshToken the refresh token to also invalidate (may be null)
+     * @param userId       the authenticated user's ID
      */
-    void logout(String token, Long userId);
+    void logout(String accessToken, String refreshToken, Long userId);
 
     boolean validateToken(String token);
 

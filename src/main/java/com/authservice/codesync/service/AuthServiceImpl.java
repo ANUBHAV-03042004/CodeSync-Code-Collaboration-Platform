@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -70,7 +69,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public String login(String email, String rawPassword) {
-        Authentication auth = authenticationManager.authenticate(
+        authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(email, rawPassword));
 
         User user = userRepository.findByEmail(email)
@@ -87,26 +86,44 @@ public class AuthServiceImpl implements AuthService {
         return token;
     }
 
+    // ── Refresh token generation ──────────────────────────────────────────────
+
+    @Override
+    public String generateRefreshToken(User user) {
+        UserDetails userDetails = buildUserDetails(user);
+        return jwtTokenProvider.generateRefreshToken(userDetails);
+    }
+
     // ── Logout ────────────────────────────────────────────────────────────────
 
     /**
-     * Blacklists the access token in Redis for its remaining lifetime so it
-     * cannot be reused even if the client fails to delete it.
-     * Also clears the inactivity tracking key immediately.
+     * Blacklists BOTH the access token and the refresh token in Redis so
+     * neither can be reused after logout. Also clears the inactivity key.
      *
-     * @param token  the raw Bearer token string
-     * @param userId the ID of the authenticated user (from JWT claims)
+     * @param accessToken  the raw Bearer JWT string
+     * @param refreshToken the refresh token to also invalidate (may be null)
+     * @param userId       the ID of the authenticated user (from JWT claims)
      */
     @Override
-    public void logout(String token, Long userId) {
-        // Calculate remaining lifetime so the blacklist entry self-cleans
-        Date expiry    = jwtTokenProvider.extractExpiration(token);
-        long remaining = expiry.getTime() - System.currentTimeMillis();
+    public void logout(String accessToken, String refreshToken, Long userId) {
+        // Blacklist access token for its remaining lifetime
+        Date accessExpiry   = jwtTokenProvider.extractExpiration(accessToken);
+        long accessRemaining = accessExpiry.getTime() - System.currentTimeMillis();
+        blacklistService.blacklist(accessToken, accessRemaining);
 
-        blacklistService.blacklist(token, remaining);
+        // Blacklist refresh token for its remaining lifetime (if provided)
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            try {
+                Date refreshExpiry    = jwtTokenProvider.extractExpiration(refreshToken);
+                long refreshRemaining = refreshExpiry.getTime() - System.currentTimeMillis();
+                blacklistService.blacklist(refreshToken, refreshRemaining);
+            } catch (Exception e) {
+                log.warn("Could not blacklist refresh token for user {}: {}", userId, e.getMessage());
+            }
+        }
+
         blacklistService.clearActivity(userId);
-
-        log.info("User {} logged out — token blacklisted for {}ms", userId, remaining);
+        log.info("User {} logged out — access + refresh tokens blacklisted", userId);
     }
 
     // ── Token operations ──────────────────────────────────────────────────────

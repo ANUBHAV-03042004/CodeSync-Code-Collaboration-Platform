@@ -22,6 +22,12 @@ spec:
           envFrom:
             - secretRef:
                 name: auth-service-secrets
+          # FRONTEND_URL and ALLOWED_ORIGINS override — takes precedence over the secret value
+          env:
+            - name: FRONTEND_URL
+              value: "https://yourscode.netlify.app"
+            - name: ALLOWED_ORIGINS
+              value: "https://yourscode.netlify.app"
           resources:
             requests:
               memory: "256Mi"
