@@ -41,6 +41,17 @@ spec:
                 secretKeyRef:
                   name: api-gateway-secrets
                   key: EUREKA_PASSWORD
+            # FIX: tell Spring Boot to load the ConfigMap-mounted application.properties
+            # in addition to (and overriding) the bundled one inside the jar.
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:/config/"
+          # FIX: mount the ConfigMap so the pod actually uses it.
+          # Without this volumeMount the ConfigMap existed but was never applied,
+          # leaving EUREKA_DEFAULT_ZONE unresolved and Eureka discovery broken.
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+              readOnly: true
           resources:
             requests:
               memory: "256Mi"
@@ -52,13 +63,21 @@ spec:
             httpGet:
               path: /actuator/health/readiness
               port: 8080
-            initialDelaySeconds: 30
+            # FIX: 30s was too short. Spring Cloud Gateway needs ~45-60s on cold
+            # start to: load application context → connect to Eureka → fetch registry
+            # → mark routes UP. Probe fired before boot completed → 404/503 →
+            # failureThreshold hit → container killed before it ever became ready.
+            initialDelaySeconds: 60
             periodSeconds: 10
-            failureThreshold: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 90
             periodSeconds: 15
             failureThreshold: 3
+      volumes:
+        - name: config-volume
+          configMap:
+            name: api-gateway-config
