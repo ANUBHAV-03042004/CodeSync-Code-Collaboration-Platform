@@ -111,6 +111,13 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+
+        <!-- Spring Session Redis — stores OAuth2 authorization request state in Redis
+             so it survives across gateway hops and pod restarts -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
