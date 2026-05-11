@@ -201,11 +201,16 @@ class CollabSessionServiceTest {
         // endSession calls redisTemplate.delete() directly — no opsFor* needed
 
         @Test
-        @DisplayName("deletes all three Redis keys for the session")
+        @DisplayName("deletes all Redis keys (including ownerId) when owner ends session")
         void deletesAllRedisKeys() {
-            service.endSession("sid");
+            when(redisTemplate.opsForValue()).thenReturn(valueOps);
+            when(valueOps.get(anyString())).thenReturn("42"); // Mock ownerId
+            
+            service.endSession("sid", 42L);
 
             verify(redisTemplate).delete("session:sid:active");
+            verify(redisTemplate).delete("session:sid:projectId");
+            verify(redisTemplate).delete("session:sid:ownerId");
             verify(redisTemplate).delete("session:sid:participants");
             verify(redisTemplate).delete("session:sid:cursors");
         }
@@ -213,11 +218,25 @@ class CollabSessionServiceTest {
         @Test
         @DisplayName("broadcasts SESSION_ENDED event over STOMP")
         void broadcastsEndedEvent() {
-            service.endSession("sid");
+            when(redisTemplate.opsForValue()).thenReturn(valueOps);
+            when(valueOps.get(anyString())).thenReturn("42");
+
+            service.endSession("sid", 42L);
             verify(messagingTemplate).convertAndSend(
                     eq("/topic/session.sid.events"),
                     (Object) argThat(p ->
                             ((Map<?, ?>) p).get("type").equals("SESSION_ENDED")));
+        }
+
+        @Test
+        @DisplayName("throws exception when non-owner tries to end session")
+        void throwsWhenNonOwnerEndsSession() {
+            when(redisTemplate.opsForValue()).thenReturn(valueOps);
+            when(valueOps.get(anyString())).thenReturn("42");
+
+            assertThatThrownBy(() -> service.endSession("sid", 99L))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Only the session owner");
         }
     }
 

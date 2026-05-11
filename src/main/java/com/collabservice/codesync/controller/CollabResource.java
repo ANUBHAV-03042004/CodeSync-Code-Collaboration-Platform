@@ -43,10 +43,20 @@ public class CollabResource {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/{sessionId}/end")
-    public ResponseEntity<Void> end(@PathVariable String sessionId) {
-        sessionService.endSession(sessionId);
-        return ResponseEntity.ok().build();
+    @DeleteMapping("/{sessionId}")
+    public ResponseEntity<?> endSession(
+            @PathVariable String sessionId,
+            @RequestHeader(value = "X-User-Id", required = false) String xUserId) {
+        
+        Long userId = xUserId != null ? Long.parseLong(xUserId) : null;
+        if (userId == null) return ResponseEntity.status(401).build();
+
+        try {
+            sessionService.endSession(sessionId, userId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
     }
 
     @PostMapping("/{sessionId}/kick/{targetUserId}")

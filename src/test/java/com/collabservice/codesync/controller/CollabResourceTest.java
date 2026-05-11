@@ -119,17 +119,18 @@ class CollabResourceTest {
         verify(sessionService).leaveSession("session-abc", 7L);
     }
 
-    // ── POST /api/v1/sessions/{sessionId}/end ────────────────────────────────
+    // ── DELETE /api/v1/sessions/{sessionId} ──────────────────────────────────
 
     @Test
     @WithMockUser
-    @DisplayName("POST /end — returns 200 OK and ends session")
-    void endSession_returns200() throws Exception {
-        mockMvc.perform(post("/api/v1/sessions/session-abc/end")
-                        .with(csrf()))
-                .andExpect(status().isOk());
+    @DisplayName("DELETE /{sessionId} — returns 204 No Content on success")
+    void endSession_returns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/sessions/session-abc")
+                        .with(csrf())
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isNoContent());
 
-        verify(sessionService).endSession("session-abc");
+        verify(sessionService).endSession("session-abc", 1L);
     }
 
     // ── POST /api/v1/sessions/{sessionId}/kick/{targetUserId} ─────────────────

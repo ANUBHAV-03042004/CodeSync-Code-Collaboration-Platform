@@ -53,6 +53,10 @@ public class CollabSessionService {
 
         redisTemplate.opsForValue().set(sessionKey(sessionId), "ACTIVE",
                 SESSION_TTL_MINUTES, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(sessionKey(sessionId) + ":projectId", projectId.toString(),
+                SESSION_TTL_MINUTES, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(sessionKey(sessionId) + ":ownerId", ownerId.toString(),
+                SESSION_TTL_MINUTES, TimeUnit.MINUTES);
         addParticipantToRedis(sessionId, ownerId.toString());
 
         log.info("Session {} created for file {} by user {}", sessionId, fileId, ownerId);
@@ -77,10 +81,18 @@ public class CollabSessionService {
         addParticipantToRedis(sessionId, userId.toString());
         refreshTtl(sessionId);
 
+        String projectIdStr = redisTemplate.opsForValue().get(sessionKey(sessionId) + ":projectId");
+        Long projectId = (projectIdStr != null) ? Long.parseLong(projectIdStr) : 0L;
+
+        if (projectId == 0) {
+            log.warn("Join session {}: projectId not found in Redis, member persistence might fail", sessionId);
+        }
+
         Map<String, Object> event = Map.of(
                 "type",      "PARTICIPANT_JOINED",
                 "sessionId", sessionId,
                 "userId",    userId,
+                "projectId", projectId,
                 "timestamp", LocalDateTime.now().toString());
 
         broadcastEvent(sessionId, event);
@@ -101,8 +113,14 @@ public class CollabSessionService {
         publishAuditEvent("collab.session.left", event);
     }
 
-    public void endSession(String sessionId) {
+    public void endSession(String sessionId, Long requesterId) {
+        String ownerId = redisTemplate.opsForValue().get(sessionKey(sessionId) + ":ownerId");
+        if (ownerId != null && !ownerId.equals(requesterId.toString())) {
+            throw new IllegalStateException("Only the session owner can end the session");
+        }
         redisTemplate.delete(sessionKey(sessionId));
+        redisTemplate.delete(sessionKey(sessionId) + ":projectId");
+        redisTemplate.delete(sessionKey(sessionId) + ":ownerId");
         redisTemplate.delete(participantsKey(sessionId));
         redisTemplate.delete(cursorsKey(sessionId));
 
@@ -212,6 +230,7 @@ public class CollabSessionService {
 
     private void refreshTtl(String sessionId) {
         redisTemplate.expire(sessionKey(sessionId), SESSION_TTL_MINUTES, TimeUnit.MINUTES);
+        redisTemplate.expire(sessionKey(sessionId) + ":projectId", SESSION_TTL_MINUTES, TimeUnit.MINUTES);
     }
 
     private void assertSessionActive(String sessionId) {

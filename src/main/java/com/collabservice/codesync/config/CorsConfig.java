@@ -38,6 +38,7 @@ public class CorsConfig {
 
         // Local development
         config.addAllowedOriginPattern("http://localhost:[*]");
+        config.addAllowedOriginPattern("https://*.netlify.app");
         config.addAllowedOriginPattern("http://127.0.0.1:[*]");
 
         // The service's own public URL (covers Swagger UI same-origin try-it-out)
@@ -73,3 +74,4 @@ public class CorsConfig {
         return new CorsFilter(source);
     }
 }
+
