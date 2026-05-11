@@ -42,6 +42,7 @@ public class CorsConfig {
 
         // Local development
         config.addAllowedOriginPattern("http://localhost:[*]");
+        config.addAllowedOriginPattern("https://*.netlify.app");
         config.addAllowedOriginPattern("http://127.0.0.1:[*]");
 
         // Service's own public URL (normalised to https for non-localhost)
@@ -55,6 +56,7 @@ public class CorsConfig {
             config.addAllowedOrigin(origin);
         }
 
+        config.addAllowedOriginPattern("https://yourscode.netlify.app");
         // Additional origins via env var (comma-separated)
         String extra = System.getenv("ALLOWED_ORIGINS");
         if (extra != null && !extra.isBlank()) {
@@ -76,3 +78,4 @@ public class CorsConfig {
         return new CorsFilter(source);
     }
 }
+
