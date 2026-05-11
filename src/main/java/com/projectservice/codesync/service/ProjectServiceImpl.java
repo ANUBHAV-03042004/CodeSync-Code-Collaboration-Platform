@@ -89,6 +89,22 @@ public class ProjectServiceImpl {
     public Project forkProject(Long sourceProjectId, Long newOwnerId) {
         Project source = findOrThrow(sourceProjectId);
 
+        // Check if already forked by this user
+        List<Project> existingForks = projectRepository.findByOwnerId(newOwnerId);
+        Optional<Project> userFork = existingForks.stream()
+                .filter(p -> sourceProjectId.equals(p.getTemplateId()))
+                .findFirst();
+
+        if (userFork.isPresent()) {
+            // Unfork: delete the existing fork
+            projectRepository.delete(userFork.get());
+            source.getForkedBy().remove(newOwnerId);
+            source.setForkCount(Math.max(0, source.getForkCount() - 1));
+            projectRepository.save(source);
+            log.info("Project {} unforked by user {}", sourceProjectId, newOwnerId);
+            return null; // Return null or some indicator of unfork
+        }
+
         Project fork = Project.builder()
                 .ownerId(newOwnerId)
                 .name(source.getName())
@@ -100,6 +116,7 @@ public class ProjectServiceImpl {
         fork.getMemberIds().add(newOwnerId);
 
         source.setForkCount(source.getForkCount() + 1);
+        source.getForkedBy().add(newOwnerId);
         projectRepository.save(source);
 
         Project saved = projectRepository.save(fork);
@@ -110,7 +127,13 @@ public class ProjectServiceImpl {
 
     public void starProject(Long projectId, Long userId) {
         Project project = findOrThrow(projectId);
-        project.setStarCount(project.getStarCount() + 1);
+        if (project.getStarredBy().contains(userId)) {
+            project.getStarredBy().remove(userId);
+            project.setStarCount(Math.max(0, project.getStarCount() - 1));
+        } else {
+            project.getStarredBy().add(userId);
+            project.setStarCount(project.getStarCount() + 1);
+        }
         projectRepository.save(project);
     }
 

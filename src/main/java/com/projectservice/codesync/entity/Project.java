@@ -53,6 +53,18 @@ public class Project {
     @Column(name = "user_id")
     private Set<Long> memberIds = new HashSet<>();
 
+    @ElementCollection
+    @CollectionTable(name = "project_stars",
+            joinColumns = @JoinColumn(name = "project_id"))
+    @Column(name = "user_id")
+    private Set<Long> starredBy = new HashSet<>();
+
+    @ElementCollection
+    @CollectionTable(name = "project_forks",
+            joinColumns = @JoinColumn(name = "project_id"))
+    @Column(name = "user_id")
+    private Set<Long> forkedBy = new HashSet<>();
+
     public enum Visibility { PUBLIC, PRIVATE }
 
     // ── No-arg constructor (required by JPA) ──────────────────────────────────
@@ -65,7 +77,7 @@ public class Project {
                    String language, Visibility visibility, Long templateId,
                    boolean isArchived, int starCount, int forkCount,
                    LocalDateTime createdAt, LocalDateTime updatedAt,
-                   Set<Long> memberIds) {
+                   Set<Long> memberIds, Set<Long> starredBy, Set<Long> forkedBy) {
         this.projectId   = projectId;
         this.ownerId     = ownerId;
         this.name        = name;
@@ -79,6 +91,8 @@ public class Project {
         this.createdAt   = createdAt;
         this.updatedAt   = updatedAt;
         this.memberIds   = memberIds != null ? memberIds : new HashSet<>();
+        this.starredBy   = starredBy != null ? starredBy : new HashSet<>();
+        this.forkedBy    = forkedBy != null ? forkedBy : new HashSet<>();
     }
 
     // ── Getters ───────────────────────────────────────────────────────────────
@@ -96,6 +110,8 @@ public class Project {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public Set<Long> getMemberIds()     { return memberIds; }
+    public Set<Long> getStarredBy()     { return starredBy; }
+    public Set<Long> getForkedBy()      { return forkedBy; }
 
     // ── Setters ───────────────────────────────────────────────────────────────
 
@@ -112,6 +128,8 @@ public class Project {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt   = createdAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt   = updatedAt; }
     public void setMemberIds(Set<Long> memberIds)     { this.memberIds   = memberIds; }
+    public void setStarredBy(Set<Long> starredBy)     { this.starredBy   = starredBy; }
+    public void setForkedBy(Set<Long> forkedBy)       { this.forkedBy    = forkedBy; }
 
     // ── Builder ───────────────────────────────────────────────────────────────
 
@@ -132,6 +150,8 @@ public class Project {
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
         private Set<Long> memberIds   = new HashSet<>();
+        private Set<Long> starredBy   = new HashSet<>();
+        private Set<Long> forkedBy    = new HashSet<>();
 
         private Builder() {}
 
@@ -146,11 +166,13 @@ public class Project {
         public Builder starCount(int v)         { this.starCount   = v; return this; }
         public Builder forkCount(int v)         { this.forkCount   = v; return this; }
         public Builder memberIds(Set<Long> v)   { this.memberIds   = v; return this; }
+        public Builder starredBy(Set<Long> v)   { this.starredBy   = v; return this; }
+        public Builder forkedBy(Set<Long> v)    { this.forkedBy    = v; return this; }
 
         public Project build() {
             return new Project(projectId, ownerId, name, description, language,
                     visibility, templateId, isArchived, starCount, forkCount,
-                    createdAt, updatedAt, memberIds);
+                    createdAt, updatedAt, memberIds, starredBy, forkedBy);
         }
     }
 

@@ -221,8 +221,11 @@ public class ProjectResource {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body("Missing authentication: provide Authorization: Bearer <token>");
         }
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(projectService.forkProject(id, userId));
+        Project p = projectService.forkProject(id, userId);
+        if (p == null) {
+            return ResponseEntity.noContent().build(); // Unforked
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(p);
     }
 
     // ── Star ──────────────────────────────────────────────────────────────────
