@@ -16,7 +16,9 @@ public class CorsConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.addAllowedOriginPattern("https://*.apps.rm1.0a51.p1.openshiftapps.com");
         config.addAllowedOriginPattern("http://localhost:[*]");
+        config.addAllowedOriginPattern("https://*.netlify.app");
 
+        config.addAllowedOriginPattern("https://yourscode.netlify.app");
         String allowedOrigins = System.getenv("ALLOWED_ORIGINS");
         if (allowedOrigins != null && !allowedOrigins.isBlank()) {
             for (String origin : allowedOrigins.split(",")) {

@@ -25,7 +25,7 @@ public class NotificationWebSocketConfig implements WebSocketMessageBrokerConfig
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws/notifications")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns("https://yourscode.netlify.app", "http://localhost:[*]")
                 .withSockJS();
     }
 }
