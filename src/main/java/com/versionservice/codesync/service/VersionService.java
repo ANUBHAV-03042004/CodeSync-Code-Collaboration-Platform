@@ -164,6 +164,11 @@ public class VersionService {
         return snapshotRepository.save(snap);
     }
 
+    public void deleteSnapshot(Long snapshotId) {
+        snapshotRepository.deleteById(snapshotId);
+        log.info("Snapshot {} deleted", snapshotId);
+    }
+
     // ── SHA-256 helper ────────────────────────────────────────────────────────
 
     public String sha256(String content) {

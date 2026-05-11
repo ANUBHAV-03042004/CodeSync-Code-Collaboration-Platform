@@ -102,6 +102,12 @@ public class VersionResource {
         return ResponseEntity.ok(versionService.tagSnapshot(id, body.get("tag")));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteSnapshot(@PathVariable Long id) {
+        versionService.deleteSnapshot(id);
+        return ResponseEntity.noContent().build();
+    }
+
     record CreateSnapshotReq(Long projectId, Long fileId,
                               String message, String content, String branch) {}
     record CreateBranchReq(Long fileId, String branchName) {}
