@@ -24,7 +24,19 @@ public class FileServiceImpl {
 
     public CodeFile createFile(Long projectId, String name, String path,
                                String language, String content, Long createdById) {
-        if (fileRepository.findByProjectIdAndPath(projectId, path).isPresent()) {
+        Optional<CodeFile> existing = fileRepository.findByProjectIdAndPath(projectId, path);
+        if (existing.isPresent()) {
+            CodeFile f = existing.get();
+            if (f.isDeleted()) {
+                log.info("Restoring soft-deleted file '{}' in project {}", path, projectId);
+                f.setDeleted(false);
+                f.setName(name);
+                f.setLanguage(language);
+                f.setContent(content);
+                f.setSize(content != null ? (long) content.length() : 0L);
+                f.setLastEditedBy(createdById);
+                return fileRepository.save(f);
+            }
             throw new IllegalArgumentException("File already exists at path: " + path);
         }
         CodeFile f = CodeFile.builder()
@@ -105,7 +117,17 @@ public class FileServiceImpl {
         CodeFile f = findActive(fileId);
         f.setDeleted(true);
         fileRepository.save(f);
-        log.info("Soft-deleted file {}", fileId);
+
+        if (f.isFolder()) {
+            List<CodeFile> children = fileRepository.findByPathPrefix(f.getProjectId(), f.getPath());
+            for (CodeFile child : children) {
+                child.setDeleted(true);
+            }
+            fileRepository.saveAll(children);
+            log.info("Soft-deleted folder {} and its {} children", fileId, children.size());
+        } else {
+            log.info("Soft-deleted file {}", fileId);
+        }
     }
 
     public CodeFile restoreFile(Long fileId) {

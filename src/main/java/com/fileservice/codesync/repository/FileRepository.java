@@ -13,6 +13,7 @@ import java.util.Optional;
 public interface FileRepository extends JpaRepository<CodeFile, Long> {
 
     List<CodeFile> findByProjectIdAndIsDeletedFalse(Long projectId);
+    Optional<CodeFile> findByProjectIdAndPathAndIsDeletedFalse(Long projectId, String path);
     Optional<CodeFile> findByProjectIdAndPath(Long projectId, String path);
     List<CodeFile> findByProjectIdAndIsFolder(Long projectId, boolean isFolder);
     List<CodeFile> findByLastEditedBy(Long userId);
@@ -26,4 +27,7 @@ public interface FileRepository extends JpaRepository<CodeFile, Long> {
            "AND (LOWER(f.name) LIKE LOWER(CONCAT('%',:q,'%')) " +
            "OR LOWER(f.content) LIKE LOWER(CONCAT('%',:q,'%')))")
     List<CodeFile> searchInProject(@Param("pid") Long projectId, @Param("q") String query);
+
+    @Query("SELECT f FROM CodeFile f WHERE f.projectId = :pid AND f.path LIKE CONCAT(:path, '/%') AND f.isDeleted = false")
+    List<CodeFile> findByPathPrefix(@Param("pid") Long projectId, @Param("path") String path);
 }
