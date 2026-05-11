@@ -11,6 +11,12 @@ public interface AuthService {
 
     User register(String username, String email, String rawPassword, String fullName);
 
+    /** Verify the token from the link clicked in the verification email. */
+    void verifyEmail(String token);
+
+    /** Resend the verification email to the given address (rate-limited by caller). */
+    void resendVerificationEmail(String email);
+
     String login(String email, String rawPassword);
 
     String generateRefreshToken(User user);

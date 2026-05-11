@@ -2,10 +2,13 @@ package com.authservice.codesync;
 
 import com.authservice.codesync.controller.AuthResource;
 import com.authservice.codesync.entity.User;
+import com.authservice.codesync.repository.EmailVerificationTokenRepository;
 import com.authservice.codesync.repository.UserRepository;
 import com.authservice.codesync.security.JwtTokenProvider;
 import com.authservice.codesync.service.AuthService;
 import com.authservice.codesync.service.AuthServiceImpl;
+import com.authservice.codesync.service.EmailService;
+import com.authservice.codesync.service.EmailVerificationService;
 import com.authservice.codesync.service.TokenBlacklistService;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -33,11 +36,16 @@ import static org.mockito.Mockito.*;
 class AuthServiceImplTest {
 
     // ── Service-layer mocks (injected into AuthServiceImpl) ───────────────────
-    @Mock UserRepository        userRepository;
-    @Mock PasswordEncoder       passwordEncoder;
-    @Mock JwtTokenProvider      jwtTokenProvider;
-    @Mock AuthenticationManager authenticationManager;
-    @Mock TokenBlacklistService blacklistService;
+    @Mock UserRepository                    userRepository;
+    @Mock PasswordEncoder                   passwordEncoder;
+    @Mock JwtTokenProvider                  jwtTokenProvider;
+    @Mock AuthenticationManager             authenticationManager;
+    @Mock TokenBlacklistService             blacklistService;
+    // FIX: AuthServiceImpl constructor now requires these two additional deps
+    // (EmailVerificationTokenRepository and EmailService were added for email
+    // verification support). The test was passing only 5 args → compile error.
+    @Mock EmailVerificationTokenRepository  verificationTokenRepository;
+    @Mock EmailService                      emailService;
 
     // AuthServiceImpl is wired manually in setUp() to guarantee the correct
     // mocks are injected. Using @InjectMocks alongside duplicate same-type
@@ -47,20 +55,22 @@ class AuthServiceImplTest {
     AuthServiceImpl authService;
 
     // ── Controller-layer mocks (injected into AuthResource) ──────────────────
-    @Mock AuthService           authServiceMock;
-    @Mock JwtTokenProvider      jwtTokenProviderMock;
-    @Mock TokenBlacklistService blacklistServiceMock;
+    @Mock AuthService                authServiceMock;
+    @Mock JwtTokenProvider           jwtTokenProviderMock;
+    @Mock TokenBlacklistService      blacklistServiceMock;
+    @Mock EmailVerificationService   emailVerificationServiceMock;
 
     private AuthResource authResource;
     private User         sampleUser;
 
     @BeforeEach
     void setUp() {
-        // Explicit constructor wiring — eliminates ambiguity from having two
-        // @Mock fields of the same type (JwtTokenProvider, TokenBlacklistService)
+        // FIX: pass the two new constructor args that were added alongside email
+        // verification support. The old 5-arg call caused a compile error.
         authService = new AuthServiceImpl(
                 userRepository, passwordEncoder, jwtTokenProvider,
-                authenticationManager, blacklistService);
+                authenticationManager, blacklistService,
+                verificationTokenRepository, emailService);
 
         sampleUser = User.builder()
                 .userId(1L)
@@ -72,7 +82,7 @@ class AuthServiceImplTest {
                 .isActive(true)
                 .build();
 
-        authResource = new AuthResource(authServiceMock, jwtTokenProviderMock, blacklistServiceMock);
+        authResource = new AuthResource(authServiceMock, jwtTokenProviderMock, blacklistServiceMock, emailVerificationServiceMock);
     }
 
     // =========================================================================

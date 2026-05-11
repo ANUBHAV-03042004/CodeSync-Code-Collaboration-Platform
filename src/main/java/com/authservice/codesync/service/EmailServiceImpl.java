@@ -20,12 +20,14 @@ public class EmailServiceImpl implements EmailService {
     @Value("${spring.mail.username}")
     private String fromAddress;
 
-    @Value("${app.name:CodeSync}")
+    @Value("${app.name:YoursCode}")
     private String appName;
 
     public EmailServiceImpl(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
+
+    // ── Password reset ─────────────────────────────────────────────────────────
 
     @Async
     @Override
@@ -37,20 +39,39 @@ public class EmailServiceImpl implements EmailService {
             helper.setFrom(fromAddress);
             helper.setTo(toEmail);
             helper.setSubject(appName + " – Reset Your Password");
-
-            String htmlBody = buildResetEmailHtml(resetLink);
-            helper.setText(htmlBody, true);
+            helper.setText(buildResetEmailHtml(resetLink), true);
 
             mailSender.send(message);
             log.info("Password reset email sent to {}", toEmail);
 
         } catch (Exception e) {
             log.error("Failed to send password reset email to {}: {}", toEmail, e.getMessage());
-            // Don't propagate — caller should not leak whether the email exists
         }
     }
 
-    // ── HTML template ─────────────────────────────────────────────────────────
+    // ── Email verification ─────────────────────────────────────────────────────
+
+    @Async
+    @Override
+    public void sendVerificationEmail(String toEmail, String username, String verifyLink) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromAddress);
+            helper.setTo(toEmail);
+            helper.setSubject(appName + " – Verify Your Email Address");
+            helper.setText(buildVerificationEmailHtml(username, verifyLink), true);
+
+            mailSender.send(message);
+            log.info("Verification email sent to {}", toEmail);
+
+        } catch (Exception e) {
+            log.error("Failed to send verification email to {}: {}", toEmail, e.getMessage());
+        }
+    }
+
+    // ── HTML templates ─────────────────────────────────────────────────────────
 
     private String buildResetEmailHtml(String resetLink) {
         return """
@@ -66,11 +87,12 @@ public class EmailServiceImpl implements EmailService {
                                  border-radius:8px; overflow:hidden;
                                  box-shadow:0 2px 8px rgba(0,0,0,.1); }
                     .header { background:#1e293b; padding:28px 32px; }
-                    .header h1 { color:#fff; margin:0; font-size:22px; }
+                    .header h1 { color:#FFD600; margin:0; font-size:22px; letter-spacing:.08em; }
                     .body { padding:32px; color:#334155; line-height:1.6; }
                     .btn { display:inline-block; margin:24px 0; padding:14px 28px;
-                           background:#6366f1; color:#fff; text-decoration:none;
-                           border-radius:6px; font-weight:bold; font-size:15px; }
+                           background:#FFD600; color:#111; text-decoration:none;
+                           font-weight:800; font-size:15px; text-transform:uppercase;
+                           letter-spacing:.05em; }
                     .notice { font-size:13px; color:#94a3b8; margin-top:24px; }
                     .footer { background:#f8fafc; padding:16px 32px;
                               font-size:12px; color:#94a3b8; text-align:center; }
@@ -78,26 +100,70 @@ public class EmailServiceImpl implements EmailService {
                 </head>
                 <body>
                   <div class="container">
-                    <div class="header">
-                      <h1>&#128273; CodeSync</h1>
-                    </div>
+                    <div class="header"><h1>⚡ YOURSCODE</h1></div>
                     <div class="body">
                       <h2>Reset Your Password</h2>
-                      <p>We received a request to reset the password for your CodeSync account.
+                      <p>We received a request to reset the password for your YoursCode account.
                          Click the button below to choose a new password.</p>
                       <a class="btn" href="%s">Reset Password</a>
                       <p>This link expires in <strong>15 minutes</strong>.</p>
                       <p class="notice">
                         If you did not request a password reset, you can safely ignore this email.
-                        Your password will not be changed.
                       </p>
                     </div>
-                    <div class="footer">
-                      &copy; 2025 CodeSync. All rights reserved.
-                    </div>
+                    <div class="footer">&copy; 2025 YoursCode. All rights reserved.</div>
                   </div>
                 </body>
                 </html>
                 """.formatted(resetLink);
+    }
+
+    private String buildVerificationEmailHtml(String username, String verifyLink) {
+        return """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="UTF-8"/>
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+                  <title>Verify Your Email</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; background:#f4f4f4; margin:0; padding:0; }
+                    .container { max-width:600px; margin:40px auto; background:#fff;
+                                 border-radius:8px; overflow:hidden;
+                                 box-shadow:0 2px 8px rgba(0,0,0,.1); }
+                    .header { background:#1e293b; padding:28px 32px; }
+                    .header h1 { color:#FFD600; margin:0; font-size:22px; letter-spacing:.08em; }
+                    .body { padding:32px; color:#334155; line-height:1.6; }
+                    .btn { display:inline-block; margin:24px 0; padding:14px 28px;
+                           background:#FFD600; color:#111; text-decoration:none;
+                           font-weight:800; font-size:15px; text-transform:uppercase;
+                           letter-spacing:.05em; }
+                    .url-fallback { word-break:break-all; font-size:12px; color:#64748b;
+                                    background:#f1f5f9; padding:10px 14px; margin-top:8px; }
+                    .notice { font-size:13px; color:#94a3b8; margin-top:24px; }
+                    .footer { background:#f8fafc; padding:16px 32px;
+                              font-size:12px; color:#94a3b8; text-align:center; }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="header"><h1>⚡ YOURSCODE</h1></div>
+                    <div class="body">
+                      <h2>Welcome, %s! 👋</h2>
+                      <p>Thanks for signing up. Please verify your email address to activate your
+                         YoursCode account and start collaborating.</p>
+                      <a class="btn" href="%s">Verify Email Address</a>
+                      <p>Or copy and paste this link into your browser:</p>
+                      <div class="url-fallback">%s</div>
+                      <p>This link expires in <strong>24 hours</strong>.</p>
+                      <p class="notice">
+                        If you did not create a YoursCode account, you can safely ignore this email.
+                      </p>
+                    </div>
+                    <div class="footer">&copy; 2025 YoursCode. All rights reserved.</div>
+                  </div>
+                </body>
+                </html>
+                """.formatted(username, verifyLink, verifyLink);
     }
 }

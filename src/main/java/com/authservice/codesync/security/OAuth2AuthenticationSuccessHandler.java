@@ -48,8 +48,8 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                                         Authentication authentication) throws IOException {
 
         OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
-        OAuth2User oauthUser = oauthToken.getPrincipal();
-        String registrationId = oauthToken.getAuthorizedClientRegistrationId();
+        OAuth2User oauthUser   = oauthToken.getPrincipal();
+        String registrationId  = oauthToken.getAuthorizedClientRegistrationId();
 
         User user = resolveOrCreateUser(oauthUser, registrationId);
 
@@ -63,13 +63,10 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         String accessToken  = jwtTokenProvider.generateAccessToken(userDetails, user.getUserId(), user.getRole().name());
         String refreshToken = jwtTokenProvider.generateRefreshToken(userDetails);
 
-        // Seed the inactivity window for this OAuth session
         blacklistService.recordActivity(user.getUserId());
 
-        // Security fix: tokens go in the URL fragment (#), not query params (?).
-        // Fragments are never sent to the server, never appear in access logs,
-        // and are not included in the Referer header.
-        // The Angular /oauth2/callback page reads window.location.hash.
+        // Tokens go in the URL fragment (#) — never in query params.
+        // Fragments are never sent to the server and don't appear in logs.
         String redirectUrl = frontendUrl + "/oauth2/callback"
                 + "#token="        + accessToken
                 + "&refreshToken=" + refreshToken;
@@ -95,7 +92,6 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
             providerId = String.valueOf(attrs.get("id"));
             provider   = User.AuthProvider.GITHUB;
 
-            // Use GitHub's official noreply format: ID+login@users.noreply.github.com
             if (email == null || email.isBlank()) {
                 String login = (String) attrs.get("login");
                 email = providerId + "+" + login + "@users.noreply.github.com";
@@ -108,11 +104,11 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
             provider   = User.AuthProvider.GOOGLE;
         }
 
-        final String finalEmail               = email;
-        final String finalName                = name;
-        final String finalAvatar              = avatarUrl;
-        final String finalProvider            = providerId;
-        final User.AuthProvider finalProviderEnum = provider;
+        final String finalEmail           = email;
+        final String finalName            = name;
+        final String finalAvatar          = avatarUrl;
+        final String finalProviderId      = providerId;
+        final User.AuthProvider finalProv = provider;
 
         return userRepository.findByEmail(email)
                 .orElseGet(() -> {
@@ -125,18 +121,18 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                             .username(uniqueUsername)
                             .fullName(finalName)
                             .avatarUrl(finalAvatar)
-                            .provider(finalProviderEnum)
-                            .providerId(finalProvider)
+                            .provider(finalProv)
+                            .providerId(finalProviderId)
                             .isActive(true)
+                            // OAuth emails are pre-verified by Google/GitHub
+                            .emailVerified(true)
                             .build();
                     return userRepository.save(newUser);
                 });
     }
 
     private String ensureUniqueUsername(String base) {
-        if (!userRepository.existsByUsername(base)) {
-            return base;
-        }
+        if (!userRepository.existsByUsername(base)) return base;
         String candidate;
         do {
             candidate = base + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 6);

@@ -46,6 +46,15 @@ public class User {
     @Column(nullable = false)
     private boolean isActive = true;
 
+    /**
+     * True once the user has clicked the verification link in their email.
+     * Always true for OAuth users (Google/GitHub) — their email is pre-verified
+     * by the OAuth provider.
+     * LOCAL users start as false and must verify before they can log in.
+     */
+    @Column(nullable = false)
+    private boolean emailVerified = false;
+
     @Column(length = 500)
     private String bio;
 
@@ -61,24 +70,23 @@ public class User {
     public User() {}
 
     private User(Builder b) {
-        this.userId       = b.userId;
-        this.username     = b.username;
-        this.email        = b.email;
-        this.passwordHash = b.passwordHash;
-        this.fullName     = b.fullName;
-        this.role         = b.role != null ? b.role : Role.DEVELOPER;
-        this.avatarUrl    = b.avatarUrl;
-        this.provider     = b.provider != null ? b.provider : AuthProvider.LOCAL;
-        this.providerId   = b.providerId;
-        this.isActive     = b.isActive;
-        this.bio          = b.bio;
+        this.userId        = b.userId;
+        this.username      = b.username;
+        this.email         = b.email;
+        this.passwordHash  = b.passwordHash;
+        this.fullName      = b.fullName;
+        this.role          = b.role     != null ? b.role     : Role.DEVELOPER;
+        this.avatarUrl     = b.avatarUrl;
+        this.provider      = b.provider != null ? b.provider : AuthProvider.LOCAL;
+        this.providerId    = b.providerId;
+        this.isActive      = b.isActive;
+        this.emailVerified = b.emailVerified;
+        this.bio           = b.bio;
     }
 
     // ── Builder ───────────────────────────────────────────────────────────────
 
-    public static Builder builder() {
-        return new Builder();
-    }
+    public static Builder builder() { return new Builder(); }
 
     public static class Builder {
         private Long         userId;
@@ -90,72 +98,72 @@ public class User {
         private String       avatarUrl;
         private AuthProvider provider;
         private String       providerId;
-        private boolean      isActive = true;
+        private boolean      isActive      = true;
+        private boolean      emailVerified = false;
         private String       bio;
 
-        public Builder userId(Long v)           { this.userId       = v; return this; }
-        public Builder username(String v)       { this.username     = v; return this; }
-        public Builder email(String v)          { this.email        = v; return this; }
-        public Builder passwordHash(String v)   { this.passwordHash = v; return this; }
-        public Builder fullName(String v)       { this.fullName     = v; return this; }
-        public Builder role(Role v)             { this.role         = v; return this; }
-        public Builder avatarUrl(String v)      { this.avatarUrl    = v; return this; }
-        public Builder provider(AuthProvider v) { this.provider     = v; return this; }
-        public Builder providerId(String v)     { this.providerId   = v; return this; }
-        public Builder isActive(boolean v)      { this.isActive     = v; return this; }
-        public Builder bio(String v)            { this.bio          = v; return this; }
+        public Builder userId(Long v)            { this.userId        = v; return this; }
+        public Builder username(String v)        { this.username      = v; return this; }
+        public Builder email(String v)           { this.email         = v; return this; }
+        public Builder passwordHash(String v)    { this.passwordHash  = v; return this; }
+        public Builder fullName(String v)        { this.fullName      = v; return this; }
+        public Builder role(Role v)              { this.role          = v; return this; }
+        public Builder avatarUrl(String v)       { this.avatarUrl     = v; return this; }
+        public Builder provider(AuthProvider v)  { this.provider      = v; return this; }
+        public Builder providerId(String v)      { this.providerId    = v; return this; }
+        public Builder isActive(boolean v)       { this.isActive      = v; return this; }
+        public Builder emailVerified(boolean v)  { this.emailVerified = v; return this; }
+        public Builder bio(String v)             { this.bio           = v; return this; }
 
         public User build() { return new User(this); }
     }
 
     // ── Getters & Setters ─────────────────────────────────────────────────────
 
-    public Long getUserId()                         { return userId; }
-    public void setUserId(Long userId)              { this.userId = userId; }
+    public Long getUserId()                              { return userId; }
+    public void setUserId(Long userId)                   { this.userId = userId; }
 
-    public String getUsername()                     { return username; }
-    public void setUsername(String username)        { this.username = username; }
+    public String getUsername()                          { return username; }
+    public void setUsername(String username)             { this.username = username; }
 
-    public String getEmail()                        { return email; }
-    public void setEmail(String email)              { this.email = email; }
+    public String getEmail()                             { return email; }
+    public void setEmail(String email)                   { this.email = email; }
 
-    public String getPasswordHash()                 { return passwordHash; }
-    public void setPasswordHash(String passwordHash){ this.passwordHash = passwordHash; }
+    public String getPasswordHash()                      { return passwordHash; }
+    public void setPasswordHash(String passwordHash)     { this.passwordHash = passwordHash; }
 
-    public String getFullName()                     { return fullName; }
-    public void setFullName(String fullName)        { this.fullName = fullName; }
+    public String getFullName()                          { return fullName; }
+    public void setFullName(String fullName)             { this.fullName = fullName; }
 
-    public Role getRole()                           { return role; }
-    public void setRole(Role role)                  { this.role = role; }
+    public Role getRole()                                { return role; }
+    public void setRole(Role role)                       { this.role = role; }
 
-    public String getAvatarUrl()                    { return avatarUrl; }
-    public void setAvatarUrl(String avatarUrl)      { this.avatarUrl = avatarUrl; }
+    public String getAvatarUrl()                         { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl)           { this.avatarUrl = avatarUrl; }
 
-    public AuthProvider getProvider()               { return provider; }
-    public void setProvider(AuthProvider provider)  { this.provider = provider; }
+    public AuthProvider getProvider()                    { return provider; }
+    public void setProvider(AuthProvider provider)       { this.provider = provider; }
 
-    public String getProviderId()                   { return providerId; }
-    public void setProviderId(String providerId)    { this.providerId = providerId; }
+    public String getProviderId()                        { return providerId; }
+    public void setProviderId(String providerId)         { this.providerId = providerId; }
 
-    public boolean isActive()                       { return isActive; }
-    public void setActive(boolean isActive)         { this.isActive = isActive; }
+    public boolean isActive()                            { return isActive; }
+    public void setActive(boolean isActive)              { this.isActive = isActive; }
 
-    public String getBio()                          { return bio; }
-    public void setBio(String bio)                  { this.bio = bio; }
+    public boolean isEmailVerified()                     { return emailVerified; }
+    public void setEmailVerified(boolean emailVerified)  { this.emailVerified = emailVerified; }
 
-    public LocalDateTime getCreatedAt()             { return createdAt; }
-    public void setCreatedAt(LocalDateTime v)       { this.createdAt = v; }
+    public String getBio()                               { return bio; }
+    public void setBio(String bio)                       { this.bio = bio; }
 
-    public LocalDateTime getUpdatedAt()             { return updatedAt; }
-    public void setUpdatedAt(LocalDateTime v)       { this.updatedAt = v; }
+    public LocalDateTime getCreatedAt()                  { return createdAt; }
+    public void setCreatedAt(LocalDateTime v)            { this.createdAt = v; }
+
+    public LocalDateTime getUpdatedAt()                  { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime v)            { this.updatedAt = v; }
 
     // ── Enums ─────────────────────────────────────────────────────────────────
 
-    public enum Role {
-        GUEST, DEVELOPER, ADMIN
-    }
-
-    public enum AuthProvider {
-        LOCAL, GITHUB, GOOGLE
-    }
+    public enum Role         { DEVELOPER, ADMIN }
+    public enum AuthProvider { LOCAL, GITHUB, GOOGLE }
 }

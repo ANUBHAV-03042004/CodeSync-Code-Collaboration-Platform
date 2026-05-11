@@ -1,0 +1,41 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+# This is the main culprit: target/ contains compiled classes, the fat jar, and
+# every downloaded dependency jar. Without this exclusion, oc start-build
+# uploads hundreds of MB before the OpenShift build even starts.
+target/
+
+# ── Version control ───────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── IDE / editor files ────────────────────────────────────────────────────────
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.sts4-cache/
+*.code-workspace
+.vscode/
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Local config overrides ────────────────────────────────────────────────────
+*.env
+.env*
+application-local*.properties
+application-local*.yml
+
+# ── Kubernetes / OpenShift manifests (not needed inside the image) ────────────
+deployment.yaml
+service-route.yaml
+configmap.yaml
+*.yaml
+*.yml
+
+# ── Docs ──────────────────────────────────────────────────────────────────────
+README*
+*.md

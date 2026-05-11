@@ -37,6 +37,9 @@ public class SecurityConfig {
     @Value("${app.frontend-url:https://yourscode.netlify.app}")
     private String frontendUrl;
 
+    @Value("${app.allowed-origins:*}")
+    private String allowedOrigins;
+
     public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter,
                           UserDetailsService userDetailsService,
                           OAuth2AuthenticationSuccessHandler oAuth2SuccessHandler) {
@@ -51,14 +54,9 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // FIX: OAuth2 login requires a server-side session to store the
-                // authorization request state between the initial redirect and the
-                // callback from Google/GitHub.
-                // STATELESS destroys that state → _authorization_request_not_found_.
-                // IF_REQUIRED creates a session only for OAuth2 flows; JWT API calls
-                // send no cookies so they remain effectively stateless.
-                // The session is stored in Redis (spring-session-data-redis) so it
-                // survives across multiple pods and gateway round-trips.
+                // IF_REQUIRED: stateless for JWT API calls, session only for OAuth2 flows.
+                // Session is stored in Redis (spring-session-data-redis) so it survives
+                // across multiple pods and gateway round-trips.
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
 
@@ -72,6 +70,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password",
                                 "/api/v1/auth/reset-password/validate",
+                                // Email verification — must be public: user is not logged in yet
+                                "/api/v1/auth/verify-email",
+                                "/api/v1/auth/resend-verification",
                                 "/oauth2/**",
                                 "/login/oauth2/**",
                                 "/actuator/**",
@@ -81,10 +82,6 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).permitAll()
                         .requestMatchers("/api/v1/auth/admin/**").hasRole("ADMIN")
-                        // GUEST users can access read-only endpoints; DEVELOPER and ADMIN inherit
-                        .requestMatchers("/api/v1/auth/profile", "/api/v1/auth/search",
-                                         "/api/v1/auth/session/status")
-                                .hasAnyRole("GUEST", "DEVELOPER", "ADMIN")
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 -> oauth2
@@ -122,19 +119,20 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        String allowedOrigins = System.getenv("ALLOWED_ORIGINS");
-        if (allowedOrigins != null && !allowedOrigins.isBlank()) {
+        
+        if (allowedOrigins != null && !allowedOrigins.equals("*")) {
             config.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
+            config.setAllowCredentials(true);
         } else {
             config.setAllowedOriginPatterns(List.of("*"));
+            config.setAllowCredentials(false);
         }
+        
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization", "X-Auth-Error"));
-        if (allowedOrigins != null && !allowedOrigins.isBlank()) {
-            config.setAllowCredentials(true);
-        }
+        config.setExposedHeaders(List.of("Authorization", "X-Auth-Error", "Set-Cookie"));
         config.setMaxAge(3600L);
+        
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;

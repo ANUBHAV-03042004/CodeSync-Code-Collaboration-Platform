@@ -1,10 +1,13 @@
 package com.authservice.codesync.service;
 
 import com.authservice.codesync.entity.User;
+import com.authservice.codesync.entity.EmailVerificationToken;
+import com.authservice.codesync.repository.EmailVerificationTokenRepository;
 import com.authservice.codesync.repository.UserRepository;
 import com.authservice.codesync.security.JwtTokenProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,22 +27,38 @@ public class AuthServiceImpl implements AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
 
-    private final UserRepository        userRepository;
-    private final PasswordEncoder       passwordEncoder;
-    private final JwtTokenProvider      jwtTokenProvider;
-    private final AuthenticationManager authenticationManager;
-    private final TokenBlacklistService blacklistService;
+    private final UserRepository                    userRepository;
+    private final PasswordEncoder                   passwordEncoder;
+    private final JwtTokenProvider                  jwtTokenProvider;
+    private final AuthenticationManager             authenticationManager;
+    private final TokenBlacklistService             blacklistService;
+    private final EmailVerificationTokenRepository  verificationTokenRepository;
+    private final EmailService                      emailService;
+
+    @Value("${app.frontend-url:https://yourscode.netlify.app}")
+    private String frontendUrl;
+
+    @Value("${server.servlet.context-path:}")
+    private String contextPath;
+
+    /** The public base URL of the auth-service (via gateway) used to build verify links. */
+    @Value("${app.public-url:http://localhost:8081}")
+    private String publicUrl;
 
     public AuthServiceImpl(UserRepository userRepository,
                            PasswordEncoder passwordEncoder,
                            JwtTokenProvider jwtTokenProvider,
                            AuthenticationManager authenticationManager,
-                           TokenBlacklistService blacklistService) {
-        this.userRepository        = userRepository;
-        this.passwordEncoder       = passwordEncoder;
-        this.jwtTokenProvider      = jwtTokenProvider;
-        this.authenticationManager = authenticationManager;
-        this.blacklistService      = blacklistService;
+                           TokenBlacklistService blacklistService,
+                           EmailVerificationTokenRepository verificationTokenRepository,
+                           EmailService emailService) {
+        this.userRepository             = userRepository;
+        this.passwordEncoder            = passwordEncoder;
+        this.jwtTokenProvider           = jwtTokenProvider;
+        this.authenticationManager      = authenticationManager;
+        this.blacklistService           = blacklistService;
+        this.verificationTokenRepository = verificationTokenRepository;
+        this.emailService               = emailService;
     }
 
     // ── Registration ──────────────────────────────────────────────────────────
@@ -59,10 +78,64 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(fullName)
                 .provider(User.AuthProvider.LOCAL)
                 .isActive(true)
+                .emailVerified(false)   // must verify email before logging in
                 .build();
         User saved = userRepository.save(user);
-        log.info("Registered new user: {} ({})", username, email);
+
+        // Create and persist a verification token, then send the email asynchronously
+        String rawToken = generateSecureToken();
+        EmailVerificationToken verToken = new EmailVerificationToken(
+                rawToken, saved, java.time.LocalDateTime.now().plusHours(24));
+        verificationTokenRepository.save(verToken);
+
+        String verifyLink = publicUrl + "/api/v1/auth/verify-email?token=" + rawToken;
+        emailService.sendVerificationEmail(saved.getEmail(), saved.getUsername(), verifyLink);
+
+        log.info("Registered new user: {} ({}) — verification email sent", username, email);
         return saved;
+    }
+
+    // ── Email verification ────────────────────────────────────────────────────
+
+    @Override
+    public void verifyEmail(String token) {
+        EmailVerificationToken verToken = verificationTokenRepository.findByToken(token)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid verification link."));
+
+        if (!verToken.isValid()) {
+            throw new IllegalArgumentException(
+                    verToken.isUsed() ? "This link has already been used." : "This link has expired.");
+        }
+
+        User user = verToken.getUser();
+        user.setEmailVerified(true);
+        userRepository.save(user);
+
+        verToken.setUsed(true);
+        verificationTokenRepository.save(verToken);
+
+        log.info("Email verified for user: {}", user.getEmail());
+    }
+
+    @Override
+    public void resendVerificationEmail(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("No account found for: " + email));
+
+        if (user.isEmailVerified()) {
+            throw new IllegalStateException("Email is already verified.");
+        }
+
+        // Invalidate old tokens and issue a fresh one
+        verificationTokenRepository.invalidateAllForUser(user);
+        String rawToken = generateSecureToken();
+        EmailVerificationToken verToken = new EmailVerificationToken(
+                rawToken, user, java.time.LocalDateTime.now().plusHours(24));
+        verificationTokenRepository.save(verToken);
+
+        String verifyLink = publicUrl + "/api/v1/auth/verify-email?token=" + rawToken;
+        emailService.sendVerificationEmail(email, user.getUsername(), verifyLink);
+        log.info("Verification email resent to {}", email);
     }
 
     // ── Login ─────────────────────────────────────────────────────────────────
@@ -74,6 +147,11 @@ public class AuthServiceImpl implements AuthService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadCredentialsException("User not found"));
+
+        // Block LOCAL accounts that have not verified their email yet
+        if (user.getProvider() == User.AuthProvider.LOCAL && !user.isEmailVerified()) {
+            throw new IllegalStateException("EMAIL_NOT_VERIFIED");
+        }
 
         UserDetails userDetails = buildUserDetails(user);
         String token = jwtTokenProvider.generateAccessToken(
@@ -255,5 +333,11 @@ public class AuthServiceImpl implements AuthService {
                 .password(user.getPasswordHash() != null ? user.getPasswordHash() : "")
                 .authorities(List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())))
                 .build();
+    }
+
+    private String generateSecureToken() {
+        byte[] bytes = new byte[32];
+        new java.security.SecureRandom().nextBytes(bytes);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }
